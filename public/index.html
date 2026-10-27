@@ -1,0 +1,21 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#111827"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/icon-192.png"><title>Push Lab</title><style>*{box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;margin:0;min-height:100dvh;background:#0b1020;color:#f8fafc;display:grid;place-items:center;padding:24px}main{max-width:390px;width:100%;background:#171e31;border:1px solid #30384c;border-radius:28px;padding:28px;box-shadow:0 20px 70px #0006}h1{font-size:30px;margin:8px 0}p{color:#bac7dc;line-height:1.5}button{width:100%;padding:17px;margin-top:12px;font-size:16px;font-weight:650;border-radius:14px;border:0;color:#fff;background:#5268f7}button:disabled{opacity:.4}button.secondary{background:#34405c}#status{white-space:pre-wrap;color:#b3f7d1;min-height:50px;font-size:14px;margin-top:18px}.small{font-size:12px;color:#aab9d1}</style></head><body><main><div style="font-size:42px">🔔</div><h1>Push Lab</h1><p>Let's see whether your iPhone gets a real notification while this app is closed.</p><button id="enable">1. Enable notifications</button><button class="secondary" id="send">2. Send push in 15 seconds</button><div id="status" role="status">Open this app from your iPhone Home Screen.</div><p class="small">iOS 16.4+ required. This demo keeps subscription data only until its server restarts.</p></main><script>
+const status=document.getElementById('status');
+const tell=(s)=>status.textContent=s;
+function base64ToUint8Array(base64){const padding='='.repeat((4-base64.length%4)%4);const raw=atob((base64+padding).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...raw].map(c=>c.charCodeAt(0)));}
+async function responseJSON(url, options){let r=await fetch(url,options);let data=await r.json();if(!r.ok)throw Error(data.error||'Server error');return data;}
+async function getRegistration(){if(!('serviceWorker' in navigator)) throw Error('Service workers not supported');await navigator.serviceWorker.register('/sw.js');return navigator.serviceWorker.ready;}
+document.getElementById('enable').onclick=async()=>{try{
+  if(!window.matchMedia('(display-mode: standalone)').matches)throw Error('Install using Share → Add to Home Screen, then open its icon.');
+  if(!('PushManager' in window)||!('Notification' in window))throw Error('Push is not supported in this browser/app. Use iOS 16.4+');
+  // Get permission immediately from user click, before awaits, to preserve user activation on iOS.
+  const permission=await Notification.requestPermission();
+  if(permission!=='granted')throw Error('Permission is '+permission+'. Check iPhone Settings → Notifications → Push Lab.');
+  tell('Permission granted. Registering…');const reg=await getRegistration();const {publicKey}=await responseJSON('/api/key');
+  let sub=await reg.pushManager.getSubscription();
+  if(sub){await sub.unsubscribe();} // Demo server generates new VAPID keys on restart.
+  sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:base64ToUint8Array(publicKey)});
+  await responseJSON('/api/subscribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(sub)});
+  tell('✅ Subscribed! Now tap Send push, then lock your iPhone.');
+}catch(e){tell('❌ '+e.message)}};
+document.getElementById('send').onclick=async()=>{try{let x=await responseJSON('/api/test',{method:'POST'});tell('✅ '+x.message);}catch(e){tell('❌ '+e.message)}};
+</script></body></html>
